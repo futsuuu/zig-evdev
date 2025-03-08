@@ -10,10 +10,7 @@ pub fn build(b: *Build) void {
 
     // libevdev
     const dep_libevdev = b.lazyDependency("libevdev", .{});
-    const libevdev: ?*Build.Step.Compile = if (dep_libevdev) |dep|
-        buildLibevdev(b, target, optimize, dep, static)
-    else
-        null;
+    const libevdev = if (dep_libevdev) |dep| buildLibevdev(b, target, optimize, dep, static) else null;
 
     // event module
     const event_mod = b: {
@@ -40,6 +37,7 @@ pub fn build(b: *Build) void {
     mod.addAnonymousImport("Event", event_mod);
 
     // tests
+    var test_step = b.step("test", "Run unit tests");
     const tests = b.addTest(.{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
@@ -48,10 +46,9 @@ pub fn build(b: *Build) void {
     });
     if (libevdev) |lib| tests.root_module.linkLibrary(lib);
     tests.root_module.addAnonymousImport("Event", event_mod);
-    b.step("test", "Run unit tests").dependOn(&b.addRunArtifact(tests).step);
+    test_step.dependOn(&b.addRunArtifact(tests).step);
 
     // examples
-    const examples_step = b.step("examples", "Install all examples");
     inline for ([_][2][]const u8{
         .{ "ctrl2cap", "Swap CapsLock key for Control key" },
         .{ "hello", "Hello" },
@@ -63,12 +60,10 @@ pub fn build(b: *Build) void {
             .optimize = optimize,
         });
         exe.root_module.addImport("evdev", mod);
-
-        const artifact = b.addInstallArtifact(exe, .{});
-        examples_step.dependOn(&artifact.step);
+        test_step.dependOn(&exe.step);
+        b.installArtifact(exe);
 
         const run_cmd = b.addRunArtifact(exe);
-        run_cmd.step.dependOn(&artifact.step);
         if (b.args) |args| run_cmd.addArgs(args);
 
         const run_step = b.step(b.fmt("example-{s}", .{example[0]}), example[1]);
