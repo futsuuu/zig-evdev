@@ -10,7 +10,7 @@ pub fn build(b: *Build) void {
 
     // libevdev
     const dep_libevdev = b.lazyDependency("libevdev", .{});
-    const libevdev = if (dep_libevdev) |dep| buildLibevdev(b, target, optimize, dep, static) else null;
+    const libevdev = if (dep_libevdev) |dep| buildLibevdev(b, target, optimize, dep, if (static) .static else .dynamic) else null;
 
     // event module
     const event_mod = b: {
@@ -76,23 +76,20 @@ fn buildLibevdev(
     target: Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
     source: *Build.Dependency,
-    static: bool,
+    linkage: std.builtin.LinkMode,
 ) *Build.Step.Compile {
+    const mod = b.createModule(.{
+        .target = target,
+        .optimize = optimize,
+        .pic = linkage == .dynamic,
+    });
     const so_version = std.SemanticVersion{ .major = 2, .minor = 3, .patch = 0 };
-    const lib = if (static)
-        b.addStaticLibrary(.{
-            .name = "evdev",
-            .target = target,
-            .optimize = optimize,
-        })
-    else
-        b.addSharedLibrary(.{
-            .name = "evdev",
-            .target = target,
-            .optimize = optimize,
-            .version = so_version,
-            .pic = true,
-        });
+    const lib = b.addLibrary(.{
+        .name = "evdev",
+        .linkage = linkage,
+        .root_module = mod,
+        .version = if (linkage == .dynamic) so_version else null,
+    });
 
     lib.linkLibC();
     lib.linkSystemLibrary("rt");
