@@ -12,7 +12,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: mlugg/setup-zig@v1
+      - uses: mlugg/setup-zig@v2
 
       - name: lunest run
         run: zig build test --summary all
