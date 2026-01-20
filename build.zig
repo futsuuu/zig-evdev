@@ -16,9 +16,11 @@ pub fn build(b: *Build) void {
     const event_mod = b: {
         const exe = b.addExecutable(.{
             .name = "gen_event",
-            .root_source_file = b.path("build/gen_event.zig"),
-            .target = b.graph.host,
-            .link_libc = true,
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("build/gen_event.zig"),
+                .target = b.graph.host,
+                .link_libc = true,
+            })
         });
         if (libevdev) |lib| exe.root_module.linkLibrary(lib);
         break :b Build.Module.CreateOptions{
@@ -39,10 +41,12 @@ pub fn build(b: *Build) void {
     // tests
     var test_step = b.step("test", "Run unit tests");
     const tests = b.addTest(.{
-        .root_source_file = b.path("src/root.zig"),
-        .target = target,
-        .optimize = optimize,
-        .link_libc = true,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/root.zig"),
+            .target = target,
+            .optimize = optimize,
+            .link_libc = true,
+        })
     });
     if (libevdev) |lib| tests.root_module.linkLibrary(lib);
     tests.root_module.addAnonymousImport("Event", event_mod);
@@ -55,9 +59,11 @@ pub fn build(b: *Build) void {
     }) |example| {
         const exe = b.addExecutable(.{
             .name = example[0],
-            .root_source_file = b.path("examples/" ++ example[0] ++ ".zig"),
-            .target = target,
-            .optimize = optimize,
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("examples/" ++ example[0] ++ ".zig"),
+                .target = target,
+                .optimize = optimize,
+            })
         });
         exe.root_module.addImport("evdev", mod);
         test_step.dependOn(&exe.step);
@@ -101,8 +107,10 @@ fn buildLibevdev(
     const event_names_h = b: {
         const run = b.addRunArtifact(b.addExecutable(.{
             .name = "capture_out",
-            .root_source_file = b.path("build/capture_out.zig"),
-            .target = b.graph.host,
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("build/capture_out.zig"),
+                .target = b.graph.host,
+            })
         }));
         const out = run.addOutputFileArg("libevdev/event-names.h");
         run.addFileArg(source.path("libevdev/make-event-names.py"));

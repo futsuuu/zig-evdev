@@ -28,9 +28,9 @@ pub fn main() !void {
         break :b consts;
     };
 
-    var s = std.ArrayList(u8).init(allocator);
-    defer s.deinit();
-    var w = s.writer();
+    var s: std.ArrayList(u8) = .empty;
+    defer s.deinit(allocator);
+    var w = s.writer(allocator);
 
     _ = w.write(
         \\code: Code,
@@ -147,8 +147,8 @@ pub fn main() !void {
                 name: []const u8,
                 target: []const u8,
             };
-            var aliases = std.ArrayList(Alias).init(allocator);
-            defer aliases.deinit();
+            var aliases: std.ArrayList(Alias) = .empty;
+            defer aliases.deinit(allocator);
             var is_empty = true;
 
             consts: inline for (consts) |cnst| {
@@ -173,7 +173,7 @@ pub fn main() !void {
                         \\
                     , .{ cnst, code }) catch {}
                 else
-                    try aliases.append(.{ .name = cnst, .target = code_name });
+                    try aliases.append(allocator, .{ .name = cnst, .target = code_name });
             }
 
             for (aliases.items) |alias| w.print(

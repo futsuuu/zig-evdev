@@ -78,14 +78,14 @@ pub fn isKeyboard(self: Device) bool {
     return true;
 }
 
-pub fn readEvents(self: Device, dest: *ArrayList(Event)) !usize {
+pub fn readEvents(self: Device, allocator: Allocator, dest: *ArrayList(Event)) !usize {
     const dest_len = dest.items.len;
 
     var ev: Event = try self.nextEvent(ReadFlags.NORMAL) orelse return 0;
     // read events until SYN_REPORT event is received
     while (true) {
         ev = (try self.nextEvent(ReadFlags.NORMAL)).?;
-        try dest.append(ev);
+        try dest.append(allocator, ev);
         const syn = switch (ev.code) {
             .syn => |e| e,
             else => continue,
@@ -96,7 +96,7 @@ pub fn readEvents(self: Device, dest: *ArrayList(Event)) !usize {
         while (true) {
             log.info("handling dropped events...", .{});
             if (try self.nextEvent(ReadFlags.SYNC)) |ev2|
-                try dest.append(ev2)
+                try dest.append(allocator, ev2)
             else
                 break;
         }
@@ -161,9 +161,9 @@ test removeInvalidEvents {
         .{ .code = .{ .syn = .SYN_REPORT },  .value = 0 },
     };
     // zig fmt: on
-    var events = ArrayList(Event).init(allocator);
-    defer events.deinit();
-    try events.appendSlice(before);
+    var events: ArrayList(Event) = .empty;
+    defer events.deinit(allocator);
+    try events.appendSlice(allocator, before);
     removeInvalidEvents(&events, 0);
     try std.testing.expectEqualSlices(Event, after, events.items);
 }

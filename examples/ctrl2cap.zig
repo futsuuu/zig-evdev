@@ -10,6 +10,7 @@ pub const std_options: std.Options = .{
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
     defer std.debug.assert(gpa.deinit() == .ok);
 
     var args = std.process.args();
@@ -27,10 +28,10 @@ pub fn main() !void {
     try keyboard.grab();
     defer keyboard.ungrab() catch {};
 
-    var event_buf = std.ArrayList(evdev.Event).init(gpa.allocator());
-    defer event_buf.deinit();
+    var event_buf: std.ArrayList(evdev.Event) = .empty;
+    defer event_buf.deinit(allocator);
     main: while (true) {
-        if (try keyboard.readEvents(&event_buf) == 0) continue;
+        if (try keyboard.readEvents(allocator, &event_buf) == 0) continue;
         defer event_buf.clearRetainingCapacity();
         for (event_buf.items) |event| {
             std.debug.print("{}\n", .{event});
