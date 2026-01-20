@@ -12,12 +12,12 @@
         "README.md",
     },
 
-    .minimum_zig_version = "0.14.0",
+    .minimum_zig_version = "0.15.1",
 
     .dependencies = .{
         .libevdev = .{
-            .url = "https://gitlab.freedesktop.org/libevdev/libevdev/-/archive/libevdev-1.13.3/libevdev-libevdev-1.13.3.tar.gz",
-            .hash = "1220db899097092487a8a93f158766e41e9de8daa4e92094711d75c86f91c0f347f9",
+            .url = "https://gitlab.freedesktop.org/libevdev/libevdev/-/archive/libevdev-1.13.6/libevdev-libevdev-1.13.6.tar.gz",
+            .hash = "N-V-__8AAMU8DAB0JjNABZUAi-Sm4IzDmsO7hujyiZbS9uHc",
             .lazy = true,
         },
     },
