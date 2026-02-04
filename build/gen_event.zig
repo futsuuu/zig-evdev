@@ -17,16 +17,39 @@ pub fn lowercase(arg: []const u8) []const u8 {
         @panic("Failed to lowercase string for unknown reason");
 }
 
-pub fn main() !void {
-    @setEvalBranchQuota(220000);
-    const allocator = std.heap.page_allocator;
+fn isMetaConstant(name: []const u8) bool {
+    for ([_][]const u8{ "_VERSION", "_CNT", "_MAX" }) |s| {
+        if (std.mem.endsWith(u8, name, s)) return true;
+    }
+    return false;
+}
 
-    const consts = comptime b: {
-        var consts: []const []const u8 = &.{};
-        for (@typeInfo(c).@"struct".decls) |decl|
-            consts = consts ++ &[_][]const u8{decl.name};
-        break :b consts;
-    };
+const Constant = struct {
+    name: []const u8,
+    full_name: []const u8,
+    value: c_int,
+
+    fn collect(comptime prefix: []const u8) []const Constant {
+        return comptime b: {
+            var slice: []const Constant = &.{};
+            for (@typeInfo(c).@"struct".decls) |decl| {
+                if (!std.mem.startsWith(u8, decl.name, prefix)) continue;
+                if (isMetaConstant(decl.name)) continue;
+                const self: Constant = .{
+                    .name = decl.name[prefix.len..],
+                    .full_name = decl.name,
+                    .value = @field(c, decl.name),
+                };
+                slice = slice ++ &[_]Constant{self};
+            }
+            break :b slice;
+        };
+    }
+};
+
+pub fn main() !void {
+    @setEvalBranchQuota(30000);
+    const allocator = std.heap.page_allocator;
 
     var s: std.ArrayList(u8) = .empty;
     defer s.deinit(allocator);
@@ -40,24 +63,17 @@ pub fn main() !void {
     ) catch {};
 
     // SYN, KEY, REL, ...
-    const types = comptime b: {
-        var types: []const []const u8 = &.{};
-        for (consts) |cnst| {
-            if (filter(cnst, "EV_"))
-                types = types ++ &[_][]const u8{cnst["EV_".len..]};
-        }
-        break :b types;
-    };
+    const event_types = comptime Constant.collect("EV_");
 
     {
         _ = w.write(
             \\pub const Type = enum(c_ushort) {
             \\
         ) catch {};
-        inline for (types) |typ| w.print(
+        for (event_types) |event_type| w.print(
             \\    {s} = {},
             \\
-        , .{ lowercase(typ), @field(c, "EV_" ++ typ) }) catch {};
+        , .{ lowercase(event_type.name), event_type.value }) catch {};
         _ = w.write(
             \\    pub inline fn new(integer: c_ushort) Type {
             \\        return @enumFromInt(integer);
@@ -72,10 +88,10 @@ pub fn main() !void {
             \\        return switch (self) {
             \\
         ) catch {};
-        inline for (types) |typ| w.print(
-            \\          .{s} => "EV_{s}",
+        for (event_types) |event_type| w.print(
+            \\          .{s} => "{s}",
             \\
-        , .{ lowercase(typ), typ }) catch {};
+        , .{ lowercase(event_type.name), event_type.full_name }) catch {};
         _ = w.write(
             \\        };
             \\    }
@@ -113,16 +129,16 @@ pub fn main() !void {
             \\
         ) catch {};
 
-        for (types) |typ| w.print(
+        for (event_types) |event_type| w.print(
             \\    {s}: {s},
             \\
-        , .{ lowercase(typ), typ }) catch {};
+        , .{ lowercase(event_type.name), event_type.name }) catch {};
 
-        inline for (types) |typ| {
+        inline for (event_types) |event_type| {
             w.print(
                 \\    pub const {s} = enum(c_ushort) {{
                 \\
-            , .{typ}) catch {};
+            , .{event_type.name}) catch {};
             defer w.print(
                 \\        pub inline fn new(integer: c_ushort) @This() {{
                 \\            return @enumFromInt(integer);
@@ -141,7 +157,7 @@ pub fn main() !void {
                 \\        }}
                 \\    }};
                 \\
-            , .{lowercase(typ)}) catch {};
+            , .{lowercase(event_type.name)}) catch {};
 
             const Alias = struct {
                 name: []const u8,
@@ -151,29 +167,36 @@ pub fn main() !void {
             defer aliases.deinit(allocator);
             var is_empty = true;
 
-            consts: inline for (consts) |cnst| {
-                comptime if (!filter(cnst, typ ++ "_"))
-                    if (!(std.mem.eql(u8, typ, "KEY") and filter(cnst, "BTN_")))
-                        continue;
-                comptime for (types) |t|
-                    if (!std.mem.eql(u8, typ, t) and filter(cnst, t ++ "_"))
-                        // - typ != t
-                        // - cnst starts with both typ and t
-                        if (typ.len < t.len)
-                            // t includes typ
-                            continue :consts;
+            var event_codes: std.ArrayList(Constant) = .empty;
+            defer event_codes.deinit(allocator);
+            if (std.mem.eql(u8, event_type.name, "KEY")) {
+                try event_codes.appendSlice(allocator, Constant.collect("KEY_"));
+                try event_codes.appendSlice(allocator, Constant.collect("BTN_"));
+            } else {
+                try event_codes.appendSlice(allocator, Constant.collect(event_type.name ++ "_"));
+            }
+            for (event_codes.items) |event_code| {
+                // Whether `event_code` should match a prefix that is longer than `event_type.name ++ "_"`.
+                const is_mismatched = for (event_types) |t| {
+                    if (t.name.len <= event_type.name.len) continue;
+                    if (!std.mem.startsWith(u8, t.name, event_type.name)) continue;
+                    if (std.mem.startsWith(u8, event_code.full_name, t.name)) break true;
+                } else false;
+                if (is_mismatched) continue;
 
                 is_empty = false;
 
-                const code: c_ushort = @field(c, cnst);
-                const code_name = if (c.libevdev_event_code_get_name(@field(c, "EV_" ++ typ), code)) |p| std.mem.span(p) else cnst;
-                if (std.mem.eql(u8, cnst, code_name))
+                const real_code_name = if (c.libevdev_event_code_get_name(
+                    event_type.value,
+                    @intCast(event_code.value),
+                )) |p| std.mem.span(p) else event_code.full_name;
+                if (std.mem.eql(u8, event_code.full_name, real_code_name))
                     w.print(
                         \\        {s} = {},
                         \\
-                    , .{ cnst, code }) catch {}
+                    , .{ event_code.full_name, event_code.value }) catch {}
                 else
-                    try aliases.append(allocator, .{ .name = cnst, .target = code_name });
+                    try aliases.append(allocator, .{ .name = event_code.full_name, .target = real_code_name });
             }
 
             for (aliases.items) |alias| w.print(
