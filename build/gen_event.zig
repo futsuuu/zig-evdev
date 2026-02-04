@@ -51,7 +51,9 @@ const Constant = struct {
 
 pub fn main() !void {
     @setEvalBranchQuota(30000);
-    const allocator = std.heap.page_allocator;
+    var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
+    defer std.debug.assert(debug_allocator.deinit() == .ok);
+    const allocator = debug_allocator.allocator();
 
     var s: std.ArrayList(u8) = .empty;
     defer s.deinit(allocator);
