@@ -33,6 +33,8 @@ const Constant = struct {
         return comptime b: {
             var slice: []const Constant = &.{};
             for (@typeInfo(c).@"struct".decls) |decl| {
+                // We need to filter declarations before accessing it with `@field()`
+                // to avoid `@compileError()`.
                 if (!std.mem.startsWith(u8, decl.name, prefix)) continue;
                 if (isMetaConstant(decl.name)) continue;
                 const self: Constant = .{
@@ -177,6 +179,7 @@ pub fn main() !void {
             }
             for (event_codes.items) |event_code| {
                 // Whether `event_code` should match a prefix that is longer than `event_type.name ++ "_"`.
+                // e.g.: `FF_STATUS_PLAYING` code should be matched with `EV_FF_STATUS` type instead of `EV_FF` type.
                 const is_mismatched = for (event_types) |t| {
                     if (t.name.len <= event_type.name.len) continue;
                     if (!std.mem.startsWith(u8, t.name, event_type.name)) continue;
@@ -220,15 +223,4 @@ pub fn main() !void {
     } else {
         std.debug.print("{s}", .{s.items});
     }
-}
-
-fn filter(name: []const u8, prefix: []const u8) bool {
-    if (!std.mem.startsWith(u8, name, prefix))
-        return false;
-
-    for ([_][]const u8{ "_VERSION", "_CNT", "_MAX" }) |s|
-        if (std.mem.endsWith(u8, name, s))
-            return false;
-
-    return true;
 }
